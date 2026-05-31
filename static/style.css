@@ -1,0 +1,432 @@
+/* ============================================================
+   双色球中奖查询 — 样式表
+   主题：中国福利彩票红蓝配色，响应式 + 深色模式
+   ============================================================ */
+
+/* ── CSS Variables ─────────────────────────────────────── */
+:root {
+  --red:        #d4302b;
+  --red-light:  #fce8e6;
+  --red-dark:   #a8201b;
+  --blue:       #1a56db;
+  --blue-light: #e6f0fc;
+  --blue-dark:  #103ea0;
+
+  --bg:         #f5f5f5;
+  --card-bg:    #ffffff;
+  --text:       #1a1a1a;
+  --text-secondary: #6b7280;
+  --border:     #e5e7eb;
+  --shadow:     0 2px 12px rgba(0,0,0,.08);
+  --shadow-lg:  0 8px 30px rgba(0,0,0,.12);
+  --radius:     12px;
+  --radius-sm:  8px;
+  --transition: .2s ease;
+}
+
+/* ── Dark Mode ─────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:         #111827;
+    --card-bg:    #1f2937;
+    --text:       #f3f4f6;
+    --text-secondary: #9ca3af;
+    --border:     #374151;
+    --shadow:     0 2px 12px rgba(0,0,0,.25);
+    --shadow-lg:  0 8px 30px rgba(0,0,0,.4);
+  }
+}
+
+/* ── Reset & Base ──────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+               "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px 64px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.container {
+  width: 100%;
+  max-width: 640px;
+}
+
+/* ── Header ────────────────────────────────────────────── */
+.header {
+  text-align: center;
+  padding: 20px 0 32px;
+}
+.header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--red), var(--blue));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.subtitle {
+  margin-top: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* ── Upload Card ───────────────────────────────────────── */
+.upload-card {
+  background: var(--card-bg);
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  box-shadow: var(--shadow);
+}
+.upload-card:hover,
+.upload-card.drag-over {
+  border-color: var(--blue);
+  box-shadow: var(--shadow-lg);
+}
+
+.upload-icon {
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.upload-text {
+  font-size: 16px;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.upload-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ── Mobile Buttons ────────────────────────────────────── */
+.mobile-buttons {
+  display: none;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+}
+@media (max-width: 640px) {
+  .mobile-buttons { display: flex; }
+}
+
+/* ── Buttons ───────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), transform var(--transition);
+}
+.btn:active { transform: scale(.97); }
+
+.btn-primary {
+  background: var(--red);
+  color: #fff;
+}
+.btn-primary:hover { background: var(--red-dark); }
+
+.btn-secondary {
+  background: var(--border);
+  color: var(--text);
+}
+.btn-secondary:hover { background: #d1d5db; }
+
+.btn-camera {
+  background: var(--blue);
+  color: #fff;
+}
+.btn-camera:hover { background: var(--blue-dark); }
+
+.btn-gallery {
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  color: var(--text);
+}
+.btn-gallery:hover { border-color: var(--blue); }
+
+/* ── Preview ───────────────────────────────────────────── */
+.hidden { display: none !important; }
+
+.preview-area {
+  margin-top: 20px;
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.preview-image {
+  width: 100%;
+  display: block;
+  max-height: 400px;
+  object-fit: contain;
+  background: #000;
+}
+.preview-actions {
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  justify-content: center;
+}
+
+/* ── Loading ───────────────────────────────────────────── */
+.loading {
+  text-align: center;
+  padding: 48px 0;
+}
+.spinner {
+  width: 44px;
+  height: 44px;
+  border: 4px solid var(--border);
+  border-top-color: var(--red);
+  border-radius: 50%;
+  margin: 0 auto 20px;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.loading-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* ── Error ─────────────────────────────────────────────── */
+.error-box {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-top: 20px;
+  text-align: center;
+}
+.error-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #dc2626;
+  margin-bottom: 6px;
+}
+.error-message {
+  font-size: 14px;
+  color: #991b1b;
+  line-height: 1.6;
+}
+
+/* ── Results ───────────────────────────────────────────── */
+.results { margin-top: 24px; }
+
+.result-card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.result-card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.result-card-body {
+  padding: 16px 20px;
+}
+
+/* ── Ball Display ──────────────────────────────────────── */
+.ball {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  margin: 2px;
+}
+.ball-red  { background: var(--red);  box-shadow: 0 2px 6px rgba(212,48,43,.35); }
+.ball-blue { background: var(--blue); box-shadow: 0 2px 6px rgba(26,86,219,.35); }
+
+.ball-sm {
+  width: 26px; height: 26px; font-size: 12px;
+}
+
+/* ── Entry Row ─────────────────────────────────────────── */
+.entry-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.entry-table th {
+  text-align: left;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 500;
+}
+.entry-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  vertical-align: middle;
+}
+.entry-table tr:last-child td { border-bottom: none; }
+
+.entry-table tr.won {
+  background: #fef9c3;
+}
+.entry-table tr.won td:first-child {
+  border-left: 3px solid #eab308;
+}
+
+.prize-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.prize-tag.won {
+  background: #fef3c7;
+  color: #92400e;
+}
+.prize-tag.lost {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+.prize-tag.jackpot {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* ── Stats ─────────────────────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 10px;
+}
+.stat-item {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 8px;
+  text-align: center;
+}
+.stat-item.hit {
+  border-color: var(--red);
+  background: var(--red-light);
+}
+.stat-value {
+  font-size: 22px;
+  font-weight: 700;
+}
+.stat-value.red  { color: var(--red); }
+.stat-value.blue { color: var(--blue); }
+.stat-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+/* ── Camera Overlay ────────────────────────────────────── */
+.camera-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.camera-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#cameraVideo {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  object-fit: cover;
+  background: #000;
+}
+.camera-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px max(24px, env(safe-area-inset-bottom, 0px) + 8px);
+  background: rgba(0,0,0,.75);
+  flex-shrink: 0;
+  gap: 8px;
+}
+.camera-controls .btn-secondary {
+  background: rgba(255,255,255,.15);
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.btn-capture {
+  width: 68px; height: 68px;
+  border-radius: 50%;
+  border: 4px solid rgba(255,255,255,.8);
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform .15s;
+}
+.btn-capture:active { transform: scale(.9); }
+.btn-capture svg { display: none; }
+.btn-capture::after {
+  content: '';
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: #fff;
+  display: block;
+}
+
+/* ── Responsive ────────────────────────────────────────── */
+@media (max-width: 640px) {
+  body { padding: 12px 12px 48px; }
+  .header h1 { font-size: 24px; }
+  .upload-card { padding: 32px 16px; }
+  .ball { width: 28px; height: 28px; font-size: 13px; }
+  .entry-table th, .entry-table td { padding: 6px 8px; font-size: 13px; }
+}

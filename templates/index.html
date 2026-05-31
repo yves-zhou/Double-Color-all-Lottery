@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>双色球中奖查询</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- 标题栏 -->
+    <header class="header">
+      <h1>双色球中奖查询</h1>
+      <p class="subtitle">拍照上传彩票，自动识别并查询中奖结果</p>
+    </header>
+
+    <!-- 上传区域 -->
+    <section class="upload-section" id="uploadSection">
+      <div class="upload-card" id="uploadCard">
+        <div class="upload-area" id="uploadArea">
+          <svg class="upload-icon" viewBox="0 0 48 48" width="48" height="48">
+            <rect x="4" y="8" width="40" height="32" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+            <circle cx="16" cy="20" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M8 36 L18 26 L26 34 L34 20 L40 28 V36 Z" fill="none" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <p class="upload-text">点击或拖拽上传彩票照片</p>
+          <p class="upload-hint">支持 JPG、PNG、HEIC 格式</p>
+        </div>
+        <div class="mobile-buttons" id="mobileButtons">
+          <button class="btn btn-camera" id="btnCamera">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            拍照
+          </button>
+          <button class="btn btn-gallery" id="btnGallery">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+            相册
+          </button>
+        </div>
+        <input type="file" accept="image/*" id="fileInput" hidden>
+      </div>
+
+      <!-- 预览确认区 -->
+      <div class="preview-area hidden" id="previewArea">
+        <img id="previewImage" src="" alt="彩票预览" class="preview-image">
+        <div class="preview-actions">
+          <button class="btn btn-primary" id="btnConfirm">确认上传并查询</button>
+          <button class="btn btn-secondary" id="btnRetake">重新选择</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 加载动画 -->
+    <section class="loading hidden" id="loading">
+      <div class="spinner"></div>
+      <p class="loading-text">正在识别彩票信息...</p>
+      <p class="loading-sub">视觉模型分析 + 中彩网开奖数据匹配，请稍候</p>
+    </section>
+
+    <!-- 错误提示 -->
+    <section class="error-box hidden" id="errorBox">
+      <p class="error-title">识别失败</p>
+      <p class="error-message" id="errorMessage"></p>
+    </section>
+
+    <!-- 结果区域 -->
+    <section class="results hidden" id="results">
+      <!-- JS 动态填充 -->
+    </section>
+  </div>
+
+  <!-- 摄像模态框 -->
+  <div class="camera-overlay hidden" id="cameraOverlay">
+    <div class="camera-container">
+      <video id="cameraVideo" autoplay playsinline muted></video>
+      <canvas id="cameraCanvas" hidden></canvas>
+      <div class="camera-controls">
+        <button class="btn btn-secondary" id="btnCloseCamera">关闭</button>
+        <button class="btn btn-capture" id="btnCapture">
+          <svg viewBox="0 0 48 48" width="48" height="48">
+            <circle cx="24" cy="24" r="18" fill="none" stroke="white" stroke-width="3"/>
+            <circle cx="24" cy="24" r="14" fill="white"/>
+          </svg>
+        </button>
+        <button class="btn btn-secondary" id="btnSwitchCamera">翻转</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/script.js"></script>
+</body>
+</html>
