@@ -252,7 +252,17 @@ def fetch_winning_numbers(period: str) -> Tuple[List[int], int, str]:
     }
 
     try:
-        resp = _requests.get(_CWL_API_URL, params=params, timeout=15)
+        resp = _requests.get(
+            _CWL_API_URL,
+            params=params,
+            timeout=15,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Referer": "https://www.cwl.gov.cn/ygkj/wqkjgg/ssq/",
+            },
+        )
         resp.raise_for_status()
         payload = resp.json()
     except _requests.exceptions.Timeout:
