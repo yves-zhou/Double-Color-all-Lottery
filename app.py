@@ -157,7 +157,7 @@ def _call_vision_api(image_path: str) -> str:
     base_url = cfg.get("base_url", "").strip() or "https://api.openai.com/v1"
     model = cfg.get("model", "").strip() or "gpt-4o"
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=90.0)
     data_url = _encode_image(image_path)
 
     response = client.chat.completions.create(
@@ -291,6 +291,33 @@ def fetch_winning_numbers(period: str) -> Tuple[List[int], int, str]:
 # ============================================================
 #  Flask 路由
 # ============================================================
+
+@app.errorhandler(404)
+def _handle_404(e):
+    return jsonify({"success": False, "error": "接口不存在"}), 404
+
+
+@app.errorhandler(405)
+def _handle_405(e):
+    return jsonify({"success": False, "error": "请求方法不允许"}), 405
+
+
+@app.errorhandler(413)
+def _handle_413(e):
+    return jsonify({"success": False, "error": "上传文件过大"}), 413
+
+
+@app.errorhandler(500)
+def _handle_500(e):
+    tb = traceback.format_exc()
+    return jsonify({"success": False, "error": f"服务器内部错误：{tb[-300:]}"}), 500
+
+
+@app.errorhandler(Exception)
+def _handle_uncaught(e):
+    tb = traceback.format_exc()
+    return jsonify({"success": False, "error": f"未预期的错误：{e}\n{tb[-300:]}"}), 500
+
 
 @app.route("/")
 def index():
