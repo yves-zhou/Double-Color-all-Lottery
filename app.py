@@ -235,69 +235,60 @@ _CWL_API_URL = "https://www.cwl.gov.cn/cwl_admin/front/cwlkj/search/kjxx/findDra
 
 
 def fetch_winning_numbers(period: str) -> Tuple[List[int], int, str]:
-    """从中彩网 API 获取开奖号码。返回 (reds, blue, period_display)。"""
+    """获取开奖号码。优先从灰鸟 API 获取（海外可用），失败则回退中彩网。返回 (reds, blue, period_display)。"""
     import requests as _requests
 
-    params = {
-        "name": "ssq",
-        "issueCount": "",
-        "issueStart": period,
-        "issueEnd": period,
-        "dayStart": "",
-        "dayEnd": "",
-        "pageNo": "1",
-        "pageSize": "1",
-        "week": "",
-        "systemType": "PC",
-    }
+    errors = []
 
+    # ── 数据源 1：灰鸟 API（海外可用）────────────────────
+    try:
+        resp = _requests.get(
+            "http://api.huiniao.top/interface/home/lotteryHistory",
+            params={"type": "ssq", "code": period},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        if payload.get("code") == 1:
+            last = payload.get("data", {}).get("last", {})
+            if last and last.get("code") == period:
+                reds = sorted([int(last[k]) for k in ("one","two","three","four","five","six")])
+                blue = int(last["seven"])
+                if len(reds) == 6 and all(1 <= r <= 33 for r in reds) and 1 <= blue <= 16:
+                    return reds, blue, period
+    except Exception as e:
+        errors.append(f"灰鸟API: {e}")
+
+    # ── 数据源 2：中彩网（国内可用）──────────────────────
     try:
         resp = _requests.get(
             _CWL_API_URL,
-            params=params,
+            params={
+                "name": "ssq", "issueStart": period, "issueEnd": period,
+                "pageNo": "1", "pageSize": "1", "systemType": "PC",
+            },
             timeout=15,
             headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
                 "Accept": "application/json, text/plain, */*",
-                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
                 "Referer": "https://www.cwl.gov.cn/ygkj/wqkjgg/ssq/",
             },
         )
         resp.raise_for_status()
         payload = resp.json()
-    except _requests.exceptions.Timeout:
-        raise RuntimeError("请求中彩网超时，请检查网络后重试")
-    except _requests.exceptions.ConnectionError:
-        raise RuntimeError("无法连接中彩网，请检查网络")
-    except _requests.exceptions.RequestException as e:
-        raise RuntimeError(f"网络请求失败：{e}")
-    except ValueError:
-        raise RuntimeError("中彩网返回数据无法解析，请稍后重试")
+        results = payload.get("result", [])
+        if results:
+            item = results[0]
+            red_str, blue_str = str(item.get("red","")), str(item.get("blue",""))
+            if red_str and blue_str:
+                reds = sorted([int(x.strip()) for x in red_str.split(",")])
+                blue = int(blue_str.strip())
+                if len(reds) == 6 and all(1 <= r <= 33 for r in reds) and 1 <= blue <= 16:
+                    return reds, blue, str(item.get("code", period))
+    except Exception as e:
+        errors.append(f"中彩网: {e}")
 
-    results = payload.get("result", [])
-    if not results:
-        raise RuntimeError(f"期号 {period} 暂无开奖数据（可能尚未开奖或期号不存在）")
-
-    item = results[0]
-    code = str(item.get("code", period))
-    red_str = str(item.get("red", ""))
-    blue_str = str(item.get("blue", ""))
-
-    if not red_str or not blue_str:
-        raise RuntimeError(f"期号 {period} 开奖数据不完整")
-
-    try:
-        reds = sorted([int(x.strip()) for x in red_str.split(",")])
-        blue = int(blue_str.strip())
-    except (ValueError, TypeError):
-        raise RuntimeError(f"解析期号 {period} 开奖号码失败")
-
-    if len(reds) != 6 or not all(1 <= r <= 33 for r in reds):
-        raise RuntimeError(f"期号 {period} 红球数据异常")
-    if not (1 <= blue <= 16):
-        raise RuntimeError(f"期号 {period} 蓝球数据异常")
-
-    return reds, blue, code
+    raise RuntimeError(f"所有数据源均失败（{'; '.join(errors)}）")
 
 # ============================================================
 #  Flask 路由
