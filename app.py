@@ -3,10 +3,11 @@
 """
 双色球中奖识别 Web 服务
 
-提供两个接口：
-  POST /api/check  — 接收彩票照片，调用视觉 API 识别号码与期号，
-                      自动从中彩网拉取开奖号码，返回逐注比对结果。
-  GET  /api/health — 健康检查。
+提供接口：
+  POST /api/check         — 接收彩票照片（老接口），全自动识别 + 比对；
+                             也接收 JSON（两步流程第二步），直接查询中奖。
+  POST /api/recognize-sse — SSE 流式识别（两步流程第一步），分阶段推送进度。
+  GET  /api/health        — 健康检查。
 """
 
 import base64
@@ -19,7 +20,7 @@ import tempfile
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 from flask_cors import CORS
 
 # ── 项目根（ssq_web/）───────────────────────────────────────────
@@ -329,14 +330,177 @@ def health():
     return jsonify({"status": "ok", "message": "双色球中奖识别服务运行中"})
 
 
+@app.route("/api/recognize-sse", methods=["POST"])
+def recognize_sse():
+    """
+    SSE 流式识别接口：接收图片，分阶段推送进度，最终返回识别结果。
+
+    请求：multipart/form-data，字段名 file
+    SSE 事件：
+      progress — {"stage":"upload|vision|parse", "message":"..." }
+      result   — {"success":true, "period":"...", "entries":[...]}
+      error    — {"success":false, "error":"..."}
+    """
+    # 提前提取文件，避免生成器内 request 上下文丢失
+    if "file" not in request.files:
+        def gen_no_file():
+            yield _sse_event("error", {"success": False, "error": "未收到文件，请上传彩票照片"})
+        return Response(gen_no_file(), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    f = request.files["file"]
+    filename = f.filename
+    if not filename:
+        def gen_no_name():
+            yield _sse_event("error", {"success": False, "error": "文件名为空"})
+        return Response(gen_no_name(), mimetype="text/event-stream",
+                        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    suffix = os.path.splitext(filename or "ticket.jpg")[1] or ".jpg"
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    f.save(tmp_path)
+
+    def generate():
+        try:
+            # ── 阶段 1：上传完成 ──────────────────────────
+            yield _sse_event("progress", {"stage": "upload", "message": "正在上传图片..."})
+
+            # ── 阶段 2：视觉 API 识别 ────────────────────
+            yield _sse_event("progress", {"stage": "vision", "message": "AI 正在识别彩票号码..."})
+
+            try:
+                raw_text = _call_vision_api(tmp_path)
+            except ImportError:
+                yield _sse_event("error", {"success": False, "error": "服务器未安装 openai 库，请联系管理员"})
+                return
+            except RuntimeError as e:
+                yield _sse_event("error", {"success": False, "error": str(e)})
+                return
+            except Exception as e:
+                yield _sse_event("error", {"success": False, "error": f"视觉 API 调用失败：{e}"})
+                return
+
+            # ── 阶段 3：解析结果 ──────────────────────────
+            yield _sse_event("progress", {"stage": "parse", "message": "解析识别结果..."})
+
+            try:
+                period, entries = _parse_vision_response(raw_text)
+            except ValueError as e:
+                yield _sse_event("error", {"success": False, "error": str(e)})
+                return
+
+            if not entries:
+                yield _sse_event("error", {
+                    "success": False,
+                    "error": "未能从图片中识别到有效投注号码，请确认照片清晰、包含双色球彩票",
+                })
+                return
+
+            # ── 返回识别结果 ──────────────────────────────
+            entries_json = [
+                {
+                    "label": label,
+                    "reds": reds,
+                    "blue": blue,
+                    "reds_display": [f"{r:02d}" for r in reds],
+                    "blue_display": f"{blue:02d}",
+                }
+                for reds, blue, label in entries
+            ]
+
+            yield _sse_event("result", {
+                "success": True,
+                "period": period,
+                "entries": entries_json,
+            })
+
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
 @app.route("/api/check", methods=["POST"])
 def check():
     """
-    接收彩票照片，全自动识别 + 比对。
-
-    请求：multipart/form-data，字段名 file
-    返回 JSON 见下方 _build_result / _build_error
+    双模式接口：
+    - multipart/form-data（老接口兼容）：接收彩票照片，全自动识别 + 比对。
+    - application/json：接收已识别的 entries JSON + period，直接获取开奖号码比对。
     """
+    # ── JSON 模式：第二步中奖查询 ────────────────────────
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        period = str(data.get("period", "")).strip()
+        raw_entries = data.get("entries", [])
+
+        if not period:
+            return _build_error("缺少开奖期号", stage="check"), 400
+        if not raw_entries:
+            return _build_error("缺少投注号码 entries", stage="check"), 400
+
+        # 重建 entries 格式
+        entries: List[Tuple[List[int], int, str]] = []
+        labels = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        for item in raw_entries:
+            reds = item.get("reds", [])
+            blue = item.get("blue")
+            if not isinstance(reds, list) or len(reds) != 6:
+                continue
+            if not isinstance(blue, int):
+                continue
+            if not all(1 <= r <= 33 for r in reds):
+                continue
+            if not (1 <= blue <= 16):
+                continue
+            reds_sorted = sorted(reds)
+            if len(set(reds_sorted)) != 6:
+                continue
+            label = labels[len(entries)] if len(entries) < 26 else f"注{len(entries) + 1}"
+            entries.append((reds_sorted, blue, label))
+
+        if not entries:
+            return _build_error("未能解析出有效投注号码", stage="check"), 422
+
+        # 获取中奖号码
+        try:
+            win_reds, win_blue, period_display = fetch_winning_numbers(period)
+        except RuntimeError as e:
+            return _build_result(
+                period=period,
+                entries=entries,
+                win_reds=None,
+                win_blue=None,
+                fetch_error=str(e),
+            )
+        except ImportError:
+            return _build_result(
+                period=period,
+                entries=entries,
+                win_reds=None,
+                win_blue=None,
+                fetch_error="服务器未安装 requests 库，无法自动获取开奖号码",
+            )
+
+        return _build_result(
+            period=period_display,
+            entries=entries,
+            win_reds=win_reds,
+            win_blue=win_blue,
+        )
+
+    # ── 原有 multipart 模式（向后兼容）───────────────────
     # ── 1. 校验上传文件 ──────────────────────────────────
     if "file" not in request.files:
         return _build_error("未收到文件，请上传彩票照片", stage="upload"), 400
@@ -426,6 +590,17 @@ def check():
             os.unlink(tmp_path)
         except OSError:
             pass
+
+
+# ============================================================
+#  SSE 辅助函数
+# ============================================================
+
+def _sse_event(event: str, data: Dict[str, Any]) -> str:
+    """构建一条 SSE 事件字符串。event 同时作为 SSE 行和 JSON 内字段。"""
+    data["event"] = event
+    payload = json.dumps(data, ensure_ascii=False)
+    return f"event: {event}\ndata: {payload}\n\n"
 
 
 # ============================================================
@@ -605,7 +780,7 @@ if __name__ == "__main__":
         print(f"  [!] 自签名证书，浏览器会提示不安全，点击「继续访问」即可")
     else:
         print(f"  访问地址: http://127.0.0.1:5000")
-    print(f"  API 文档: POST /api/check  |  GET /api/health")
+    print(f"  API 文档: POST /api/check  |  POST /api/recognize-sse  |  GET /api/health")
     print("=" * 56)
 
     ssl_context = (cert_file, key_file) if cert_file else None

@@ -422,6 +422,61 @@ body {
   display: block;
 }
 
+/* ── Progress Panel (SSE) ─────────────────────────────── */
+.progress-panel {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 20px;
+  margin-top: 20px;
+  text-align: center;
+}
+.progress-steps {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.progress-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 20px;
+  background: #e5e7eb;
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+}
+.progress-step .step-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #9ca3af;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.progress-step.active {
+  background: #fce8e6;
+  color: var(--red);
+  box-shadow: 0 0 0 2px rgba(212,48,43,.25);
+}
+.progress-step.active .step-icon {
+  background: var(--red);
+  color: #fff;
+}
+.progress-message {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 /* ── Responsive ────────────────────────────────────────── */
 @media (max-width: 640px) {
   body { padding: 12px 12px 48px; }
@@ -429,4 +484,5 @@ body {
   .upload-card { padding: 32px 16px; }
   .ball { width: 28px; height: 28px; font-size: 13px; }
   .entry-table th, .entry-table td { padding: 6px 8px; font-size: 13px; }
+  .progress-step { font-size: 12px; padding: 6px 10px; }
 }

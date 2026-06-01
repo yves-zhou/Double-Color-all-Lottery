@@ -1,6 +1,7 @@
 /**
  * 双色球中奖查询 — 前端交互逻辑
  * 支持 PC 拖拽上传、移动端拍照/相册、结果展示
+ * 新增：图片压缩、SSE 进度推送、两步拆分流程
  */
 
 (function () {
@@ -22,6 +23,11 @@
   const btnRetake = $('#btnRetake');
 
   const loadingEl = $('#loading');
+  const progressPanel = $('#progressPanel');
+  const progressMessage = $('#progressMessage');
+  const step1 = $('#step1');
+  const step2 = $('#step2');
+  const step3 = $('#step3');
   const errorBox = $('#errorBox');
   const errorMessage = $('#errorMessage');
   const resultsEl = $('#results');
@@ -39,6 +45,7 @@
   let currentFile = null;       // 待上传的 File
   let cameraStream = null;      // 摄像头 MediaStream
   let facingMode = 'environment'; // 后置摄像头
+  let recognizedData = null;    // SSE 识别结果 { period, entries }
 
   // ── 工具函数 ──────────────────────────────────────────
   function show(el) { el.classList.remove('hidden'); }
@@ -51,6 +58,7 @@
 
   function showError(msg) {
     hide(loadingEl);
+    hide(progressPanel);
     hide(resultsEl);
     errorMessage.textContent = msg;
     show(errorBox);
@@ -60,19 +68,70 @@
     hide(previewArea);
     show(uploadCard);
     currentFile = null;
+    recognizedData = null;
     fileInput.value = '';
     hide(errorBox);
     hide(resultsEl);
+    hide(progressPanel);
+  }
+
+  function resetProgress() {
+    [step1, step2, step3].forEach(s => s.classList.remove('active'));
+    progressMessage.textContent = '准备中...';
+  }
+
+  function setStepActive(num, msg) {
+    resetProgress();
+    for (let i = 1; i <= num; i++) {
+      const step = document.getElementById('step' + i);
+      if (step) step.classList.add('active');
+    }
+    progressMessage.textContent = msg;
+  }
+
+  // ── 图片压缩 ──────────────────────────────────────────
+  function compressImage(file) {
+    return new Promise((resolve, reject) => {
+      if (!file.type.startsWith('image/')) {
+        return resolve(file);
+      }
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let w = img.width;
+        let h = img.height;
+        const maxSide = 1024;
+        if (w <= maxSide && h <= maxSide) {
+          return resolve(file);
+        }
+        if (w > h) { h = Math.round(h * maxSide / w); w = maxSide; }
+        else       { w = Math.round(w * maxSide / h); h = maxSide; }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob((blob) => {
+          if (!blob) { return resolve(file); }
+          const compressed = new File([blob], file.name, { type: 'image/jpeg' });
+          resolve(compressed);
+        }, 'image/jpeg', 0.75);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
   }
 
   // ── 文件选择处理 ──────────────────────────────────────
-  function handleFile(file) {
+  async function handleFile(file) {
     if (!file || !file.type.startsWith('image/')) {
       showError('请选择图片文件（JPG / PNG / HEIC）');
       return;
     }
-    currentFile = file;
-    const url = URL.createObjectURL(file);
+    currentFile = await compressImage(file);
+    const url = URL.createObjectURL(currentFile);
     previewImage.src = url;
     hide(uploadCard);
     show(previewArea);
@@ -111,42 +170,112 @@
   // ── 预览操作 ──────────────────────────────────────────
   btnRetake.addEventListener('click', resetUploadUI);
 
+  // ════════════════════════════════════════════════════════
+  //  两步流程：第 1 步 — SSE 识别
+  // ════════════════════════════════════════════════════════
+
   btnConfirm.addEventListener('click', async () => {
     if (!currentFile) return;
     hide(previewArea);
     hide(errorBox);
     hide(resultsEl);
-    setLoading(true);
+    hide(loadingEl);
+
+    // 显示进度面板
+    show(progressPanel);
 
     const formData = new FormData();
     formData.append('file', currentFile);
 
     try {
-      const resp = await fetch('/api/check', {
+      const resp = await fetch('/api/recognize-sse', {
         method: 'POST',
         body: formData,
       });
-      const data = await resp.json();
 
+      if (!resp.ok) {
+        hide(progressPanel);
+        showError(`服务器错误：${resp.status}`);
+        return;
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // 解析 SSE 事件
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // 保留未完成的行
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.event === 'progress') {
+                const stageMap = { upload:1, vision:2, parse:3 };
+                const num = stageMap[data.stage] || 1;
+                setStepActive(num, data.message);
+              } else if (data.success) {
+                // 识别成功
+                recognizedData = { period: data.period, entries: data.entries };
+                hide(progressPanel);
+                renderRecognized(recognizedData);
+                show(resultsEl);
+                show(uploadCard);
+              } else {
+                hide(progressPanel);
+                showError(data.error || '识别失败');
+              }
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (err) {
+      hide(progressPanel);
+      showError(`网络请求失败：${err.message}`);
+    }
+  });
+
+  // ════════════════════════════════════════════════════════
+  //  两步流程：第 2 步 — 中奖查询
+  // ════════════════════════════════════════════════════════
+
+  async function checkPrize() {
+    if (!recognizedData) return;
+    setLoading(true);
+
+    try {
+      const resp = await fetch('/api/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          period: recognizedData.period,
+          entries: recognizedData.entries,
+        }),
+      });
+      const data = await resp.json();
       setLoading(false);
 
       if (data.success && data.results) {
         renderResults(data);
         show(resultsEl);
-        show(uploadCard); // 可再次上传
+        show(uploadCard);
       } else if (data.success && !data.has_winning_numbers) {
-        // 识别出号码但无法获取中奖号码
         renderPartial(data);
         show(resultsEl);
         show(uploadCard);
       } else {
-        showError(data.error || '未知错误');
+        showError(data.error || '查询失败');
       }
     } catch (err) {
       setLoading(false);
       showError(`网络请求失败：${err.message}`);
     }
-  });
+  }
 
   // ════════════════════════════════════════════════════════
   //  结果渲染
@@ -157,6 +286,44 @@
     const redHTML = reds.map(r => `<span class="${cls}">${String(r).padStart(2, '0')}</span>`).join('');
     const blueCls = sm ? 'ball ball-blue ball-sm' : 'ball ball-blue';
     return `${redHTML} <span class="${blueCls}">${String(blue).padStart(2, '0')}</span>`;
+  }
+
+  function renderRecognized(data) {
+    const { period, entries } = data;
+
+    let html = '';
+
+    // ── 识别结果卡 ──────────────────────────────────────
+    html += `<div class="result-card">
+      <div class="result-card-header">
+        <span>识别结果${period ? '（第 ' + period + ' 期）' : ''}</span>
+      </div>
+      <div class="result-card-body">
+        <table class="entry-table">
+          <thead><tr><th></th><th>投注号码</th></tr></thead>
+          <tbody>`;
+    entries.forEach((e) => {
+      html += `<tr>
+        <td style="font-weight:700;width:32px;">${e.label}</td>
+        <td>${renderBalls(e.reds, e.blue, true)}</td>
+      </tr>`;
+    });
+    html += `</tbody></table>
+        <div style="margin-top:16px;text-align:center;">
+          <button class="btn btn-primary" id="btnCheckPrize" style="min-width:160px;">
+            查询中奖
+          </button>
+        </div>
+      </div>
+    </div>`;
+
+    resultsEl.innerHTML = html;
+
+    // 绑定查询中奖按钮
+    const btnCheck = $('#btnCheckPrize');
+    if (btnCheck) {
+      btnCheck.addEventListener('click', checkPrize);
+    }
   }
 
   function renderResults(data) {
@@ -349,7 +516,7 @@
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // 转为 Blob → File
+    // 转为 Blob → File（相机拍照质量 0.92 属于原始采集，压缩在 handleFile 中统一做）
     canvas.toBlob((blob) => {
       if (!blob) {
         showError('拍照失败，请重试');
